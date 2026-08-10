@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"strings"
 )
+
+const defaultRootFolderName = "disStorage"
 
 func CASPathTransformFunc(key string) PathKey{
 	hash:=sha1.Sum([]byte(key))
@@ -30,6 +33,14 @@ func CASPathTransformFunc(key string) PathKey{
 	}
 }
 
+func (p PathKey) FirstPathName() string{
+	paths:= strings.Split(p.Pathname,"/")
+	if len(paths)==0{
+		return ""
+	}
+	return paths[0]
+}
+
 func (p PathKey) FullPath() string{
 	return fmt.Sprintf("%s/%s",p.Pathname,p.Filename)
 }
@@ -42,11 +53,15 @@ type PathKey struct{
 }
 
 type storeOpts struct{
+	Root 			  string
 	PathTransformFunc PathTransformFunc
 }
 
-var DefaultPathTransformFunc = func(key string) string{
-	return key
+var DefaultPathTransformFunc = func(key string) PathKey{
+	return PathKey{
+		Pathname:key,
+		Filename: key,
+	}
 } 
 
 type store struct{
@@ -54,9 +69,38 @@ type store struct{
 }
 
 func NewStore(opts storeOpts) *store{
+	if opts.PathTransformFunc==nil{
+		opts.PathTransformFunc=DefaultPathTransformFunc
+	}
+
+	if opts.Root==""{
+		opts.Root=defaultRootFolderName
+	}
+
 	return &store{
 		storeOpts: opts,
 	}
+}
+
+func (s *store) Has(key string) bool{
+	pathKey:=s.PathTransformFunc(key)
+	fullPathWithRoot:=fmt.Sprintf("%s/%s",s.Root,pathKey.FullPath())
+	_ ,err:=os.Stat(fullPathWithRoot)
+
+	if errors.Is(err,os.ErrNotExist){
+		return false
+	}
+	return true
+}
+
+func (s *store) Delete(key string) error{
+	pathKey:=s.PathTransformFunc(key)
+	
+	defer func(){
+		log.Println("deleted file from disk: ",pathKey.FullPath())
+	}()
+	firstPathNameWithRoot:=fmt.Sprintf("%s/%s",s.Root,pathKey.FirstPathName())
+	return os.RemoveAll(firstPathNameWithRoot)
 }
 
 func (s *store) Read(key string)(io.Reader , error){
@@ -75,27 +119,27 @@ func (s *store) Read(key string)(io.Reader , error){
 
 func (s *store) readStream(key string)(io.ReadCloser , error){
 	pathKey:=s.PathTransformFunc(key)
-	return os.Open(pathKey.FullPath())
+	pathKeyWithRoot:=fmt.Sprintf("%s/%s",s.Root,pathKey.FullPath())
+	return os.Open(pathKeyWithRoot)
 }
 
 // r is the source of the file data. It may be a network connection,
 // a file, or any other type that implements io.Reader.
 func (s *store) writeStream(key string, r io.Reader) error{
 	pathKey :=s.PathTransformFunc(key)
-
-	if err:=os.MkdirAll(pathKey.Pathname,os.ModePerm);err!=nil{
+	pathNameWithRoot:=fmt.Sprintf("%s/%s",s.Root,pathKey.Pathname)
+	if err:=os.MkdirAll(pathNameWithRoot,os.ModePerm);err!=nil{
 		return err
 	}
 
-	fullPath :=pathKey.FullPath()
-
-	f,err:=os.Create(fullPath)
+	fullPathNameWithRoot :=fmt.Sprintf("%s/%s",s.Root,pathKey.FullPath())
+	f,err:=os.Create(fullPathNameWithRoot)
 	if err!=nil{
 		return err
 	}
 
 	n,err:=io.Copy(f,r)
 
-	log.Printf("written %d bytes to disk : %s",n,fullPath)
+	log.Printf("written %d bytes to disk : %s",n,fullPathNameWithRoot)
 	return nil
 }
