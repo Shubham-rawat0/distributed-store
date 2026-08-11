@@ -59,6 +59,8 @@ func (t *TCPTransport) ListenAndAccept() error{
 
 	go t.startAcceptLoop()
 
+	fmt.Println("TCP transport listening in port",t.ListenAddr)
+
 	return nil
 }
 
@@ -79,7 +81,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 	var err error
 
 	defer func(){
-		fmt.Println("droppin peer connection",err)
+		fmt.Println("dropping peer connection",err)
 		conn.Close()
 	}()
 
