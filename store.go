@@ -65,7 +65,7 @@ var DefaultPathTransformFunc = func(key string) PathKey{
 } 
 
 type store struct{
-	storeOpts
+	storeOpts	
 }
 
 func NewStore(opts storeOpts) *store{

@@ -1,32 +1,45 @@
 package main
 
 import (
+	"bytes"
 	"log"
 
 	"github.com/Shubham-rawat0/distributed-store/p2p"
 )
 
-func main(){
+func makeServer(listenAddr string, nodes ...string) *FileServer{
 
-	tcpTransportOpts:=p2p.TCPTransportOpts{
-		ListenAddr: 		":3000",
-		HandshakeFunc:      p2p.NOPHandshakeFunc,
-		Decoder:  			p2p.DefaultDecoder{},				
+	tcptransportOpts:=p2p.TCPTransportOpts{
+		ListenAddr:		 listenAddr,
+		HandshakeFunc:   p2p.NOPHandshakeFunc,
+		Decoder: 		 p2p.DefaultDecoder{},
 	}
 
-	tcpTransport:= p2p.NewTCPTransport(tcpTransportOpts)
+	tcpTransport:=p2p.NewTCPTransport(tcptransportOpts)
 
 	fileServerOpts:= FileServerOpts{
-		StorageRoot: 		"3000_network",
+		StorageRoot: 		listenAddr + "3000_network",
 		PathTransformFunc:  CASPathTransformFunc,
 		Transport:          tcpTransport,	
+		BootStrapNodes:     nodes,
 	}
 	
-	s:=NewFileServer(fileServerOpts)
-	
-	if err:=s.Start();err!=nil{
-		log.Fatal(err)
-	}
+	s:= NewFileServer(fileServerOpts)
+	tcpTransport.OnPeer=s.OnPeer
+	return s
+}
 
-	select {}
+func main(){
+
+	s1:=makeServer(":3000","")
+	s2:=makeServer(":4000",":3000")
+
+	go func (){
+		log.Fatal((s1.Start()))
+	}()
+
+	s2.Start()
+	// data:=bytes.NewReader([]byte("my big data file"))
+
+	// // s2.StoreFile("key",data)
 }
