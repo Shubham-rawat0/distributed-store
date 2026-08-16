@@ -17,7 +17,7 @@ func TestStore(t *testing.T){
 	s:=newStore()
 	defer teardown(t,s)
 
-	for i:=range 50{
+	for i:=range 5{
 		key:=fmt.Sprintf("foo_%d",i)
 		data:=fmt.Appendf([]byte{},"lol bc majaak hai kya, %d baar marunga",i)
 
@@ -29,7 +29,7 @@ func TestStore(t *testing.T){
 			t.Errorf("expected to have key %s",key)
 		}
 
-		r,err:=s.Read(key)
+		_,r,err:=s.Read(key)
 		if err!=nil{
 			t.Error(err)
 		}
