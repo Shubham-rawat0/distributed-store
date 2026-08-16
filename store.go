@@ -104,7 +104,7 @@ func (s *store) Delete(key string) error{
 	return os.RemoveAll(firstPathNameWithRoot)
 }
 
-func (s *store) Write(key string, r io.Reader) error{
+func (s *store) Write(key string, r io.Reader) (int64 , error){
 	return s.writeStream(key , r)
 }
 
@@ -130,21 +130,23 @@ func (s *store) readStream(key string)(io.ReadCloser , error){
 
 // r is the source of the file data. It may be a network connection,
 // a file, or any other type that implements io.Reader.
-func (s *store) writeStream(key string, r io.Reader) error{
+func (s *store) writeStream(key string, r io.Reader) (int64,error){
 	pathKey :=s.PathTransformFunc(key)
 	pathNameWithRoot:=fmt.Sprintf("%s/%s",s.Root,pathKey.Pathname)
 	if err:=os.MkdirAll(pathNameWithRoot,os.ModePerm);err!=nil{
-		return err
+		return 0,err
 	}
 
 	fullPathNameWithRoot :=fmt.Sprintf("%s/%s",s.Root,pathKey.FullPath())
 	f,err:=os.Create(fullPathNameWithRoot)
 	if err!=nil{
-		return err
+		return 0,err
 	}
 
 	n,err:=io.Copy(f,r)
+	if err!=nil{
+		return 0,err
+	}
 
-	log.Printf("written %d bytes to disk : %s",n,fullPathNameWithRoot)
-	return nil
+	return n, nil
 }

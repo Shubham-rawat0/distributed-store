@@ -1,8 +1,10 @@
 package main
 
 import (
-	"bytes"
+	"fmt"
+	"io"
 	"log"
+	"time"
 
 	"github.com/Shubham-rawat0/distributed-store/p2p"
 )
@@ -37,9 +39,22 @@ func main(){
 	go func (){
 		log.Fatal((s1.Start()))
 	}()
+	time.Sleep(1 * time.Second)
+	go s2.Start()
 
-	s2.Start()
+	time.Sleep(1 * time.Second)
 	// data:=bytes.NewReader([]byte("my big data file"))
+	// s2.Store("coolpicture.jpg",data)
+	// time.Sleep(time.Millisecond*5)
 
-	// // s2.StoreFile("key",data)
+	r,err:=s2.Get("coolpicture.jpg")
+	if err!=nil{
+		fmt.Println(err)
+	}
+	b,err:=io.ReadAll(r)
+	if err!=nil{
+		fmt.Println(err)
+	}
+	fmt.Println(string(b))
+	select{}
 }
