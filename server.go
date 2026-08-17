@@ -14,6 +14,7 @@ import (
 )
 
 type FileServerOpts struct{
+	ID 					string
 	EncKey 				[]byte
 	StorageRoot			string
 	PathTransformFunc	PathTransformFunc
@@ -30,23 +31,28 @@ type FileServer struct{
 }
 
 type Message struct{
-	From 		string
 	Payload		any
 }
 
 type MessageStoreFile struct{
 	Key 		string
+	ID 			string
 	Size		int64
 }
 
 type MessageGetFile struct{
-	Key string
+	Key	    string
+	ID 		string
 }
 
 func NewFileServer(opts FileServerOpts,)*FileServer{
 	storeOpts:= storeOpts{
 		Root: 				opts.StorageRoot,
 		PathTransformFunc:  opts.PathTransformFunc,
+	}
+
+	if len(opts.ID)==0{
+		opts.ID=generateId()
 	}
 
 	return &FileServer{
@@ -85,16 +91,17 @@ func (s *FileServer) broadcast(msg *Message) error{
 }
 
 func (s *FileServer) Get(key string) (io.Reader, error){
-	if s.store.Has(key){
+	if s.store.Has(s.ID,key){
 		fmt.Printf("%s serving file %s from disk\n",s.Transport.Addr(),key)
-		_,r,err:= s.store.Read(key)
+		_,r,err:= s.store.Read(s.ID,key)
 		return r,err
 	}
 
 	fmt.Printf("%s don't have %s file in disk, fetching from network...\n",s.Transport.Addr(),key)
 	msg:=Message{
 		Payload: MessageGetFile{
-			Key: key,
+			Key: hashKey(key),
+			ID:s.ID,
 		},
 	}
 
@@ -107,8 +114,8 @@ func (s *FileServer) Get(key string) (io.Reader, error){
 	for _ ,peer:=range s.peers{
 		var fileSize int64
 		binary.Read(peer,binary.LittleEndian,&fileSize)
-		
-		n,err:=s.store.WriteDecrypt(s.EncKey,key,io.LimitReader(peer,fileSize))
+
+		n,err:=s.store.WriteDecrypt(s.EncKey,s.ID,key,io.LimitReader(peer,fileSize))
 		if err!=nil{
 			return nil,err
 		}
@@ -117,7 +124,7 @@ func (s *FileServer) Get(key string) (io.Reader, error){
 		peer.CloseStream()
 	}
 	
-		_,r,err:= s.store.Read(key)
+		_,r,err:= s.store.Read(s.ID,key)
 		return r,err
 }
 
@@ -127,15 +134,16 @@ func (s *FileServer) Store(key string , r io.Reader) error{
 	    tee = io.TeeReader(r , fileBuffer)
 		)
 
-	size,err:=s.store.Write(key,tee)
+	size,err:=s.store.Write(s.ID,key,tee)
 	if err!=nil{
 		return err
 	}
 	
 	msg := Message{
 		Payload: MessageStoreFile{
-			Key:key,
+			Key:hashKey(key),
 			Size:size+16,
+			ID:s.ID,
 		},
 	}
 
@@ -145,18 +153,21 @@ func (s *FileServer) Store(key string , r io.Reader) error{
 
 	time.Sleep(time.Millisecond*5)
 
-	for _ ,peer := range s.peers{
-		peer.Send([]byte{p2p.IncomingStream})
-		n,err:=copyEncrypt(s.EncKey,fileBuffer,peer)
-		if err!=nil{
+	peers:=[]io.Writer{}
+	for _,peer:=range s.peers{
+		peers=append(peers, peer)
+	}
+	mw:=io.MultiWriter(peers...)
+	mw.Write([]byte{p2p.IncomingStream})
+	n,err:=copyEncrypt(s.EncKey,fileBuffer,mw)
+	if err!=nil{
 			return err
 		}
 
-		fmt.Println("received and written bytes",n)
+	fmt.Printf("%s received and written %d bytes to disk\n",s.Transport.Addr(),n)
+	return nil
 	}
 
-	return nil
-}
 
 func (s *FileServer) Stop(){
 	close(s.quitch)
@@ -207,12 +218,12 @@ func (s *FileServer) handleMessage(from string , msg *Message) error{
 }
 
 func (s *FileServer) handleMessageGetFile(from string,msg MessageGetFile) error{
-	if !s.store.Has(msg.Key){
+	if !s.store.Has(msg.ID,msg.Key){
 		return fmt.Errorf("file (%s) not present in disk, fetching from network...\n",msg)
 	}
 
 	fmt.Printf("%s serving file %s over the network\n",s.Transport.Addr(),msg.Key)
-	fileSize,r,err:=s.store.Read(msg.Key)
+	fileSize,r,err:=s.store.Read(msg.ID,msg.Key)
 	if err!=nil{
 		return err
 	}
@@ -245,7 +256,7 @@ func (s *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) e
 		return fmt.Errorf("peer %s couldn't be found in peer list",from)
 	}
 
-	n,err:= s.store.Write(msg.Key,io.LimitReader(peer,int64(msg.Size)))
+	n,err:= s.store.Write(msg.ID,msg.Key,io.LimitReader(peer,int64(msg.Size)))
 	if err!=nil{
 		return err
 	}
@@ -262,7 +273,7 @@ func (s *FileServer) bootStrapNetworks() error{
 			continue
 		}
 		go func(addr string){
-		fmt.Println("attempting to connect to the remote address",addr)
+		fmt.Printf("%s attempting to connect to the remote address %s\n",s.Transport.Addr(),addr)
 			if err:=s.Transport.Dial(addr);err!=nil{
 				log.Println("dial err:",err)
 			}
