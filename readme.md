@@ -94,6 +94,4 @@ server.Stop()
 | `Transport` | `p2p.Transport` | Network transport implementation |
 | `BootStrapNodes` | `[]string` | Peer addresses to connect on startup |
 
-## License
 
-MIT
