@@ -127,6 +127,23 @@ func (s *store) readStream(key string)(int64,io.ReadCloser , error){
 	return fi.Size(),file,err
 }
 
+func (s *store) WriteDecrypt(encKey []byte,key string, r io.Reader)(int64,error){
+	pathKey :=s.PathTransformFunc(key)
+	pathNameWithRoot:=fmt.Sprintf("%s/%s",s.Root,pathKey.Pathname)
+	if err:=os.MkdirAll(pathNameWithRoot,os.ModePerm);err!=nil{
+		return 0,err
+	}
+
+	fullPathNameWithRoot :=fmt.Sprintf("%s/%s",s.Root,pathKey.FullPath())
+	f,err:=os.Create(fullPathNameWithRoot)
+	if err!=nil{
+		return 0,err
+	}
+
+	n,err:=copyDecrypt(encKey,r,f)
+	return int64(n),err
+}
+
 // r is the source of the file data. It may be a network connection,
 // a file, or any other type that implements io.Reader.
 func (s *store) writeStream(key string, r io.Reader) (int64,error){
@@ -142,10 +159,5 @@ func (s *store) writeStream(key string, r io.Reader) (int64,error){
 		return 0,err
 	}
 
-	n,err:=io.Copy(f,r)
-	if err!=nil{
-		return 0,err
-	}
-
-	return n, nil
+	return io.Copy(f,r)
 }

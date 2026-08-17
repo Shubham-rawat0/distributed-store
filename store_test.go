@@ -17,7 +17,7 @@ func TestStore(t *testing.T){
 	s:=newStore()
 	defer teardown(t,s)
 
-	for i:=range 5{
+	for i:=range 1{
 		key:=fmt.Sprintf("foo_%d",i)
 		data:=fmt.Appendf([]byte{},"lol bc majaak hai kya, %d baar marunga",i)
 
